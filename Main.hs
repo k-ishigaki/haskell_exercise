@@ -1,3 +1,4 @@
+import Data.Text
 
 main = do
   putStrLn "hello"
