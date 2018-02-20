@@ -1,26 +1,23 @@
 module Main where
 
-import Data.Text
-import qualified Text.Regex.Posix as Regex
-import Data.Attoparsec.Text
+import System.Environment (getArgs)
+import Data.String
+import Data.Word8
 import Data.Char
+import Data.Text (Text, pack)
+import Data.Attoparsec.Text
 import Control.Applicative
-import Numeric (showHex, showIntAtBase)
-import Data.Char (intToDigit)
-import qualified Codec.Binary.UTF8.String as C
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.UTF8 as UTF8
-import Data.String
-import qualified Data.Text.Encoding as Encoding
-import Data.Word8
+import Control.Monad
 
-oneNumber9 :: Parser Int
-oneNumber9 = do
+oneNumber8 :: Parser Int
+oneNumber8 = do
   char '\\'
   char 'M'
   char '-'
   result <- anyChar
-  return $ (ord result) + 9
+  return $ (ord result) + 0x80
 
 oneNumber4 :: Parser Int
 oneNumber4 = do
@@ -28,41 +25,59 @@ oneNumber4 = do
   char 'M'
   char '^'
   result <- anyChar
-  return $ (ord result) + 4
+  return $ (ord result) + 0x40
+
+oneNumber7 :: Parser Int
+oneNumber7 = do
+  char '\\'
+  char '2'
+  char '4'
+  result <- anyChar
+  return $ (ord result) + 0x70
 
 oneNumber :: Parser Int
-oneNumber = oneNumber9 <|> oneNumber4
+oneNumber = oneNumber8 <|> oneNumber4 <|> oneNumber7
 
-oneChar :: Parser String
+oneChar :: Parser Char
 oneChar = do
   num'16 <- oneNumber
   num'8  <- oneNumber
   num'1  <- oneNumber
-  return $ convertToBS num'16 num'8 num'1
+  return $ convertToChar num'16 num'8 num'1
 
+decodedChar :: Parser Char
+decodedChar = oneChar <|> anyChar
 
-changeToBS :: String -> BS.ByteString
-changeToBS s = fromString s
+decodedLine :: Parser String
+decodedLine = manyTill decodedChar (endOfLine <|> endOfInput)
 
-changeToBS' :: String -> UTF8.ByteString
-changeToBS' s = fromString s
+decodedLines :: Parser [String]
+decodedLines = many decodedLine
 
-convertToBS :: Int -> Int -> Int -> String
-convertToBS a b c = C.decode [fromIntegral a, fromIntegral b, fromIntegral c]
+convertToChar :: Int -> Int -> Int -> Char
+convertToChar a b c = decodeUTF8 $ BS.pack [fromIntegral a, fromIntegral b, fromIntegral c]
+
+decodeUTF8 :: UTF8.ByteString -> Char
+decodeUTF8 bs = case (UTF8.decode bs) of
+  Just (c, _) -> c
+  otherwise -> '×'
 
 main :: IO ()
 main = do
-  let input = "\\M-c\\M^A\\M->"
-  putStrLn$  "input = " ++ input
-  putStrLn $ show $ testFunc input
-  let result = input Regex.=~ "\^A" :: (String, String, String, [String])
-  putStrLn $ show $ result
-  putStrLn "!!!"
-  print $ parse oneNumber (pack "\\M-a\\M^A")
-  print $ parse oneChar (pack input)
-  putStrLn $ convertToBS 227 129 130
-  print $ C.encodeChar 'あ'
-  print $ C.decode $ C.encodeChar 'あ'
+  args <- getArgs
+  case args of
+    [x] -> do
+      input <- readFile x
+      forM_ (lines input) $ \line -> do
+        let result = case (parse decodedLine (pack (line ++ "\n"))) of
+                     Done _ result -> result
+                     _             -> "×"
+        putStrLn $ result
+    otherwise -> usage
 
-testFunc :: String -> Bool
-testFunc s = s Regex.=~ "\\M-c" :: Bool
+usage :: IO ()
+usage = do
+  putStrLn "usage: "
+  putStrLn "  ./decodeLog <input log file path> > <redirect file path>"
+  putStrLn "example: "
+  putStrLn "  ./decodeLog ./log.txt > log_decoded.txt"

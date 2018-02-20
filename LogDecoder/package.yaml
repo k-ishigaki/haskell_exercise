@@ -27,6 +27,7 @@ dependencies:
 - utf8-string
 - bytestring
 - word8
+- directory
 
 library:
   source-dirs: src
@@ -41,9 +42,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - LogDecoder
-    - text
-    - regex-posix
-    - attoparsec
 
 tests:
   LogDecoder-test:
